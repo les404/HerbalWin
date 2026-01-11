@@ -1,0 +1,18 @@
+[
+  {
+    "id": "20260111_161656",
+    "image_path": "D:/HerbalWin/images/download.jpg",
+    "timestamp": "2026-01-11T16:16:56.326414",
+    "response": "1. Common Name (Philippine): Siling Labuyo\n2. Scientific Name: Capsicum frutescens\n3. Brief Description: Siling Labuyo is a small, potent chili pepper that is widely cultivated and consumed in the Philippines. It is characterized by its bright red color when ripe, conical shape, and fiery heat. The plant is a perennial shrub that can grow up to 1.5 meters tall.\n4. Uses: Siling Labuyo is a staple ingredient in Filipino cuisine, used to add spiciness to dishes such as adobo, sinigang, and kinilaw. It is also used to make various condiments, sauces, and pastes.\n5. Health Benefits: Siling Labuyo contains capsaicin, the compound responsible for its heat, which has been linked to several health benefits. These include boosting metabolism, reducing appetite, relieving pain, and having anti-inflammatory properties. It is also a good source of Vitamin C and Vitamin A.\n6. Safety Notes: Due to its high capsaicin content, Siling Labuyo can cause irritation to the skin, eyes, and digestive system. It is advisable to handle with care, wash hands thoroughly after touching, and consume in moderation to avoid stomach upset or heartburn. Individuals with sensitive stomachs or certain medical conditions should exercise caution.",
+    "success": true,
+    "tokens_used": 578
+  },
+  {
+    "id": "20260111_135136",
+    "image_path": "C:/Users/lester/Pictures/Screenshot 2026-01-11 133434.png",
+    "timestamp": "2026-01-11T13:51:36.461370",
+    "response": "1. Common Name (Philippine): Sabila, Aloe Vera\n2. Scientific Name: Aloe barbadensis miller\n3. Brief Description: Sabila is a succulent plant with thick, fleshy, green leaves that grow in a rosette pattern. The leaves are edged with small, sharp teeth. The plant can grow to be quite large, with leaves reaching up to two feet in length.\n4. Uses: Sabila is widely used in the Philippines for its medicinal properties. The gel inside the leaves is applied topically to treat burns, cuts, insect bites, and skin irritations. It is also consumed orally for digestive issues and as a general health tonic. It is a popular ingredient in skincare products, hair care products, and beverages.\n5. Health Benefits: Sabila is known for its anti-inflammatory, antibacterial, and antiviral properties. It can help soothe sunburns, promote wound healing, moisturize the skin, and aid digestion. It is also rich in vitamins, minerals, and antioxidants.\n6. Safety Notes: While generally safe, some individuals may experience allergic reactions to sabila. It is advisable to perform a patch test before applying it to a large area of skin. Ingesting large quantities of sabila can lead to diarrhea and stomach cramps. Pregnant or breastfeeding women, and individuals with certain medical conditions, should consult a healthcare professional before using sabila internally. The latex layer beneath the skin of the leaf can be a laxative and should be avoided.",
+    "success": true,
+    "tokens_used": 610
+  }
+]
