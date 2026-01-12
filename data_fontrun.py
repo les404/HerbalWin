@@ -204,7 +204,7 @@ class HerbalScannerApp(ctk.CTk):
         self.grid_columnconfigure(0, weight=1)
 
         self.frames = {}
-        for F in (LoginFrame, RegisterFrame, HomeFrame, ScannerFrame, HistoryFrame):
+        for F in (LoginFrame, RegisterFrame, HomeFrame, ScannerFrame, HistoryFrame, PlantDetailFrame):
             frame = F(self)
             self.frames[F] = frame
             frame.grid(row=0, column=0, sticky="nsew")
@@ -348,30 +348,365 @@ class RegisterFrame(ctk.CTkFrame):
         else:
             messagebox.showerror("Registration Failed", message)
 
+
+PLANTS_DATABASE = [
+    {
+        'image': 'akapulko.jpg',
+        'name': 'AKAPULKO',
+        'scientific': 'Cassia alata',
+        'short_description': 'For fungal infections (tinea, ringworm), insect bites, skin itching.',
+        'full_description': 'Akapulko (Cassia alata), also known as ringworm bush or candle bush, is a medicinal shrub known for its antifungal properties. The leaves contain chrysophanic acid which effectively treats various skin conditions.',
+        'benefits': [
+            'Treats fungal infections like tinea and ringworm',
+            'Relieves insect bites and skin itching',
+            'Natural antifungal properties',
+            'Anti-inflammatory effects',
+            'Traditional skin remedy'
+        ],
+        'uses': [
+            'Topical application for skin infections',
+            'Poultice for insect bites',
+            'Traditional medicine for skin conditions',
+            'Leaf extract for fungal treatment'
+        ]
+    },
+    {
+        'image': 'aloevera.png',
+        'name': 'ALOE VERA',
+        'scientific': 'Aloe barbadensis',
+        'short_description': 'For burns, hair growth, moisturizing skin, wound healing.',
+        'full_description': 'Aloe Vera (Aloe barbadensis) is a succulent plant species known for its medicinal properties. The gel inside its leaves contains vitamins, minerals, and antioxidants that promote healing and skin health.',
+        'benefits': [
+            'Soothes burns and sunburns',
+            'Promotes hair growth and scalp health',
+            'Deeply moisturizes skin',
+            'Accelerates wound healing',
+            'Anti-inflammatory properties'
+        ],
+        'uses': [
+            'Topical gel for burns and wounds',
+            'Hair care products',
+            'Skin moisturizers',
+            'Cosmetic formulations',
+            'Traditional medicinal applications'
+        ]
+    },
+    {
+        'image': 'alugbati.jpg',
+        'name': 'ALUGBATI',
+        'scientific': 'Basella alba',
+        'short_description': 'Mild laxative, anti-inflammatory; good for constipation.',
+        'full_description': 'Alugbati (Basella alba), also known as Malabar spinach or vine spinach, is a fast-growing perennial vine with medicinal properties. Its leaves are rich in vitamins and have both nutritional and therapeutic value.',
+        'benefits': [
+            'Acts as mild laxative',
+            'Anti-inflammatory properties',
+            'Relieves constipation',
+            'Rich in vitamins A and C',
+            'Contains antioxidants'
+        ],
+        'uses': [
+            'Leaf decoction for constipation',
+            'Poultice for inflammation',
+            'Culinary vegetable',
+            'Traditional digestive aid'
+        ]
+    },
+    {
+        'image': 'ampalaya.jpg',
+        'name': 'AMPALAYA',
+        'scientific': 'Momordica charantia',
+        'short_description': 'Lowers blood sugar, for diabetes, improves digestion.',
+        'full_description': 'Ampalaya (Momordica charantia), also known as bitter melon or bitter gourd, is a tropical vine cultivated for its edible fruit. It\'s particularly valued for its anti-diabetic properties and numerous health benefits.',
+        'benefits': [
+            'Lowers blood sugar levels',
+            'Helps manage diabetes',
+            'Improves digestion',
+            'Rich in antioxidants',
+            'Boosts immune system'
+        ],
+        'uses': [
+            'Diabetes management',
+            'Culinary vegetable dishes',
+            'Juice for medicinal purposes',
+            'Traditional herbal remedy',
+            'Digestive aid'
+        ]
+    },
+    {
+        'image': 'anislag.jpg',
+        'name': 'ANISLAG',
+        'scientific': 'Securinega flexuosa',
+        'short_description': 'Decoction used for cough and fever.',
+        'full_description': 'Anislag (Securinega flexuosa) is a medicinal plant traditionally used in Philippine folk medicine. Various parts of the plant are used to prepare remedies for common ailments.',
+        'benefits': [
+            'Relieves cough symptoms',
+            'Reduces fever',
+            'Respiratory health support',
+            'Traditional medicinal uses'
+        ],
+        'uses': [
+            'Leaf decoction for cough',
+            'Fever remedy',
+            'Traditional herbal preparation',
+            'Respiratory ailment treatment'
+        ]
+    },
+    {
+        'image': 'atis.jpg',
+        'name': 'ATIS',
+        'scientific': 'Annona squamosa',
+        'short_description': 'Leaves for lice, head lice, and skin parasites.',
+        'full_description': 'Anona or Atis (Annona squamosa), also known as sugar apple or sweetsop, is a tropical fruit tree whose leaves have traditional medicinal uses, particularly for treating parasites.',
+        'benefits': [
+            'Treats head lice and skin parasites',
+            'Antiparasitic properties',
+            'Fruit provides nutritional benefits',
+            'Traditional medicinal applications'
+        ],
+        'uses': [
+            'Leaf preparation for lice treatment',
+            'Fruit as food source',
+            'Traditional parasite remedy',
+            'Skin treatment applications'
+        ]
+    },
+    {
+        'image': 'anahaw.jpg',
+        'name': 'ANAHAW',
+        'scientific': 'Livistona rotundifolia',
+        'short_description': 'Roots used for stomach pains (folk practice).',
+        'full_description': 'Anahaw (Livistona rotundifolia), also known as the Philippine round-leaf fan palm, is the national leaf of the Philippines. Its roots have been used in traditional folk medicine.',
+        'benefits': [
+            'Relieves stomach pains',
+            'Traditional digestive aid',
+            'Ornamental and cultural significance'
+        ],
+        'uses': [
+            'Root decoction for stomach pains',
+            'Ornamental plant',
+            'Traditional folk medicine',
+            'Cultural ceremonies'
+        ]
+    },
+    {
+        'image': 'balimbing.jpg',
+        'name': 'BALIMBING',
+        'scientific': 'Averrhoa carambola',
+        'short_description': 'For fever, cough, and headaches.',
+        'full_description': 'Balimbing (Averrhoa carambola), also known as star fruit, is a tropical fruit tree whose various parts have medicinal properties in traditional healing practices.',
+        'benefits': [
+            'Reduces fever',
+            'Relieves cough',
+            'Alleviates headaches',
+            'Rich in vitamin C',
+            'Contains antioxidants'
+        ],
+        'uses': [
+            'Fruit consumption for health',
+            'Traditional fever remedy',
+            'Cough treatment',
+            'Headache relief preparation'
+        ]
+    },
+    {
+        'image': 'banaba.jpg',
+        'name': 'BANABA',
+        'scientific': 'Lagerstroemia speciosa',
+        'short_description': 'Anti-diabetic, diuretic, helps with weight management.',
+        'full_description': 'Banaba (Lagerstroemia speciosa) is a flowering tree native to Southeast Asia. Its leaves contain corosolic acid, which has shown potential for treating diabetes and other health conditions.',
+        'benefits': [
+            'Anti-diabetic properties',
+            'Diuretic effects',
+            'Aids in weight management',
+            'Lowers blood sugar',
+            'Antioxidant properties'
+        ],
+        'uses': [
+            'Diabetes management',
+            'Weight loss supplements',
+            'Diuretic preparations',
+            'Traditional herbal tea',
+            'Blood sugar regulation'
+        ]
+    }
+]
+
 # -------------------- HOME FRAME --------------------
 class HomeFrame(ctk.CTkFrame):
     def __init__(self, parent):
         super().__init__(parent, fg_color="white")
-        # FIX: Remove padding so header touches top
         Header(self, parent).pack(fill="x", pady=0)
         
-        features_frame = ctk.CTkFrame(self, fg_color="white")
-        features_frame.pack(expand=True, fill="both", padx=20, pady=10)
+        # Search and Filter Bar
+        search_frame = ctk.CTkFrame(self, fg_color="white")
+        search_frame.pack(fill="x", padx=20, pady=(15, 10))
         
-        features = [(" Scanner", "Capture or upload plant images", ScannerFrame),
-                    (" History", "View your scan history", HistoryFrame)]
+        # Search Box
+        self.search_entry = ctk.CTkEntry(
+            search_frame,
+            placeholder_text="🔍 Search plants...",
+            width=500,
+            height=45,
+            font=("Arial", 14),
+            corner_radius=25,
+            border_width=0,
+            fg_color="#e8e8e8"
+        )
+        self.search_entry.pack(side="left", padx=(0, 15))
+        self.search_entry.bind("<KeyRelease>", self.filter_plants)
         
-        for i, (title, desc, target) in enumerate(features):
-            card = ctk.CTkFrame(features_frame, fg_color="#f0f0f0", corner_radius=10)
-            card.grid(row=0, column=i, padx=15, pady=15, sticky="nsew")
-            features_frame.grid_columnconfigure(i, weight=1)
+        # Filter Button
+        filter_btn = ctk.CTkButton(
+            search_frame,
+            text="Filter ▼",
+            width=120,
+            height=45,
+            font=("Arial", 14, "bold"),
+            fg_color="#e8e8e8",
+            text_color="black",
+            hover_color="#d0d0d0",
+            corner_radius=25
+        )
+        filter_btn.pack(side="left")
+        
+        # Scrollable Plant Gallery
+        self.gallery_frame = ctk.CTkScrollableFrame(self, fg_color="white")
+        self.gallery_frame.pack(fill="both", expand=True, padx=20, pady=10)
+        
+        # Configure grid for 3 columns
+        for i in range(3):
+            self.gallery_frame.grid_columnconfigure(i, weight=1)
+        
+        # FIXED: Assign the global database to self.plants
+        self.plants = PLANTS_DATABASE
+        
+        # Store all plant cards for filtering
+        self.plant_cards = []
+        
+        # Display all plants initially
+        self.display_plants()
+    
+    def display_plants(self, filtered_plants=None):
+        """Display plant cards in grid layout"""
+        # Clear existing cards
+        for widget in self.gallery_frame.winfo_children():
+            widget.destroy()
+        self.plant_cards.clear()
+        
+        # Use filtered list or all plants
+        plants_to_show = filtered_plants if filtered_plants is not None else self.plants
+        
+        if not plants_to_show:
+            # Show "No results" message
+            no_result = ctk.CTkLabel(
+                self.gallery_frame,
+                text="No plants found",
+                font=("Arial", 18),
+                text_color="gray"
+            )
+            no_result.grid(row=0, column=0, columnspan=3, pady=50)
+            return
+        
+        # FIXED: Create plant cards using dictionary structure
+        for idx, plant_data in enumerate(plants_to_show):
+            row = idx // 3
+            col = idx % 3
             
-            ctk.CTkLabel(card, text=title, font=("Arial", 20, "bold"), text_color="#295222").pack(pady=(20, 10))
-            ctk.CTkLabel(card, text=desc, text_color="gray", wraplength=200).pack(pady=(0, 15))
+            # Card Container
+            card = ctk.CTkFrame(self.gallery_frame, fg_color="#f5f5f5", corner_radius=15)
+            card.grid(row=row, column=col, padx=15, pady=15, sticky="nsew")
             
-            if target:
-                ctk.CTkButton(card, text="Go", fg_color="#295222", 
-                              command=lambda t=target: parent.show_frame(t)).pack(pady=(0, 20))
+            # Plant Image
+            try:
+                img = Image.open(f"assets/{plant_data['image']}")
+                img.thumbnail((196, 196))
+                ctk_img = ctk.CTkImage(light_image=img, size=(196, 196))
+                img_label = ctk.CTkLabel(card, image=ctk_img, text="")
+                img_label.image = ctk_img
+                img_label.pack(pady=(10, 8))
+            except:
+                # Fallback placeholder
+                placeholder = ctk.CTkLabel(
+                    card,
+                    text="🌿",
+                    font=("Arial", 70),
+                    text_color="#295222",
+                    width=196,
+                    height=196
+                )
+                placeholder.pack(pady=(10, 8))
+            
+            # Plant Name
+            name_label = ctk.CTkLabel(
+                card,
+                text=plant_data['name'],
+                font=("Arial", 16, "bold"),
+                text_color="#295222"
+            )
+            name_label.pack(pady=(3, 0))
+            
+            # Scientific Name
+            sci_label = ctk.CTkLabel(
+                card,
+                text=plant_data.get('scientific', ''),
+                font=("Arial", 10, "italic"),
+                text_color="gray"
+            )
+            sci_label.pack(pady=(0, 8))
+            
+            # FIXED: View Button now passes plant_data to PlantDetailFrame
+            view_btn = ctk.CTkButton(
+                card,
+                text="View",
+                width=120,
+                height=32,
+                font=("Arial", 12, "bold"),
+                fg_color="#295222",
+                hover_color="#1f3d1a",
+                corner_radius=8,
+                command=lambda p=plant_data: self.view_plant_detail(p)
+            )
+            view_btn.pack(pady=(0, 12))
+            
+            # Store card info for filtering
+            self.plant_cards.append({
+                'card': card,
+                'name': plant_data['name'].lower(),
+                'scientific': plant_data.get('scientific', '').lower(),
+                'data': plant_data
+            })
+    
+    def filter_plants(self, event=None):
+        """Filter plants based on search input"""
+        search_term = self.search_entry.get().lower().strip()
+        
+        if not search_term:
+            # Show all plants if search is empty
+            self.display_plants()
+            return
+        
+        # Filter plants that match search term
+        filtered = [
+            card['data'] for card in self.plant_cards
+            if search_term in card['name'] or search_term in card['scientific']
+        ]
+        
+        # If no cards loaded yet, filter from original list
+        if not self.plant_cards:
+            filtered = [
+                plant for plant in self.plants
+                if search_term in plant['name'].lower() or 
+                   search_term in plant.get('scientific', '').lower()
+            ]
+        
+        self.display_plants(filtered)
+    
+    def view_plant_detail(self, plant_data):
+        """Navigate to plant detail view"""
+        detail_frame = self.master.frames.get(PlantDetailFrame)
+        if detail_frame:
+            detail_frame.load_plant(plant_data)
+            self.master.show_frame(PlantDetailFrame)
 
 # -------------------- SCANNER FRAME --------------------
 class ScannerFrame(ctk.CTkFrame):
@@ -590,6 +925,263 @@ class HistoryFrame(ctk.CTkFrame):
         response_text.pack(fill="both", expand=True)
         response_text.insert("1.0", entry.get('response', 'No Data'))
         response_text.configure(state="disabled")
+
+# -------------------- PLANT DETAIL FRAME --------------------
+class PlantDetailFrame(ctk.CTkFrame):
+    def __init__(self, parent):
+        super().__init__(parent, fg_color="white")
+        self.parent = parent
+        self.current_plant = None
+        
+        # Header with back button
+        header_frame = ctk.CTkFrame(self, fg_color="#295222", height=80)
+        header_frame.pack(fill="x")
+        header_frame.pack_propagate(False)
+        
+        # Back button
+        back_btn = ctk.CTkButton(
+            header_frame,
+            text="← Back",
+            fg_color="transparent",
+            hover_color="#1f3d1a",
+            font=("Arial", 16, "bold"),
+            width=100,
+            command=lambda: parent.show_frame(HomeFrame)
+        )
+        back_btn.pack(side="left", padx=20, pady=20)
+        
+        # Title
+        self.title_label = ctk.CTkLabel(
+            header_frame,
+            text="Plant Details",
+            font=("Arial", 26, "bold"),
+            text_color="white"
+        )
+        self.title_label.pack(side="left", padx=20)
+        
+        # Scrollable content area
+        self.content_scroll = ctk.CTkScrollableFrame(self, fg_color="white")
+        self.content_scroll.pack(fill="both", expand=True, padx=0, pady=0)
+        
+    def load_plant(self, plant_data):
+        """Load and display plant information"""
+        self.current_plant = plant_data
+        
+        # Clear existing content
+        for widget in self.content_scroll.winfo_children():
+            widget.destroy()
+        
+        # Main container
+        container = ctk.CTkFrame(self.content_scroll, fg_color="white")
+        container.pack(fill="both", expand=True, padx=30, pady=20)
+        
+        # === TOP SECTION: Image + Quick Info ===
+        top_section = ctk.CTkFrame(container, fg_color="#f8f9fa", corner_radius=15)
+        top_section.pack(fill="x", pady=(0, 20))
+        
+        # Left: Plant Image
+        image_frame = ctk.CTkFrame(top_section, fg_color="white", corner_radius=12)
+        image_frame.pack(side="left", padx=25, pady=25)
+        
+        try:
+            img = Image.open(f"assets/{plant_data['image']}")
+            img.thumbnail((350, 350))
+            ctk_img = ctk.CTkImage(light_image=img, size=(350, 350))
+            img_label = ctk.CTkLabel(image_frame, image=ctk_img, text="")
+            img_label.image = ctk_img
+            img_label.pack(padx=10, pady=10)
+        except:
+            placeholder = ctk.CTkLabel(
+                image_frame,
+                text="🌿",
+                font=("Arial", 120),
+                text_color="#295222",
+                width=350,
+                height=350
+            )
+            placeholder.pack(padx=10, pady=10)
+        
+        # Right: Quick Info
+        info_frame = ctk.CTkFrame(top_section, fg_color="transparent")
+        info_frame.pack(side="left", fill="both", expand=True, padx=25, pady=25)
+        
+        # Plant Name (Large)
+        name_label = ctk.CTkLabel(
+            info_frame,
+            text=plant_data['name'],
+            font=("Arial", 36, "bold"),
+            text_color="#295222",
+            anchor="w"
+        )
+        name_label.pack(anchor="w", pady=(10, 5))
+        
+        # Scientific Name
+        if 'scientific' in plant_data:
+            sci_label = ctk.CTkLabel(
+                info_frame,
+                text=plant_data['scientific'],
+                font=("Arial", 16, "italic"),
+                text_color="gray",
+                anchor="w"
+            )
+            sci_label.pack(anchor="w", pady=(0, 20))
+        
+        # Short Description Box
+        desc_box = ctk.CTkFrame(info_frame, fg_color="white", corner_radius=10)
+        desc_box.pack(fill="x", pady=(0, 15))
+        
+        desc_label = ctk.CTkLabel(
+            desc_box,
+            text=plant_data.get('short_description', ''),
+            font=("Arial", 14),
+            text_color="#333",
+            wraplength=450,
+            justify="left",
+            anchor="w"
+        )
+        desc_label.pack(padx=20, pady=15, anchor="w")
+        
+        # Action Buttons
+        btn_frame = ctk.CTkFrame(info_frame, fg_color="transparent")
+        btn_frame.pack(fill="x", pady=(10, 0))
+        
+        scan_btn = ctk.CTkButton(
+            btn_frame,
+            text="🔍 Scan Similar",
+            fg_color="#295222",
+            hover_color="#1f3d1a",
+            font=("Arial", 14, "bold"),
+            height=45,
+            width=180,
+            corner_radius=10
+        )
+        scan_btn.pack(side="left", padx=(0, 10))
+        
+        save_btn = ctk.CTkButton(
+            btn_frame,
+            text="💾 Save",
+            fg_color="#4CAF50",
+            hover_color="#45a049",
+            font=("Arial", 14, "bold"),
+            height=45,
+            width=120,
+            corner_radius=10
+        )
+        save_btn.pack(side="left")
+        
+        # === FULL DESCRIPTION ===
+        if 'full_description' in plant_data:
+            self._create_section(container, "About This Plant", plant_data['full_description'])
+        
+        # === HEALTH BENEFITS ===
+        if 'benefits' in plant_data and plant_data['benefits']:
+            benefits_frame = ctk.CTkFrame(container, fg_color="#e8f5e9", corner_radius=15)
+            benefits_frame.pack(fill="x", pady=(0, 20))
+            
+            title = ctk.CTkLabel(
+                benefits_frame,
+                text="💊 Health Benefits",
+                font=("Arial", 22, "bold"),
+                text_color="#2e7d32",
+                anchor="w"
+            )
+            title.pack(anchor="w", padx=25, pady=(20, 10))
+            
+            for benefit in plant_data['benefits']:
+                benefit_item = ctk.CTkFrame(benefits_frame, fg_color="white", corner_radius=8)
+                benefit_item.pack(fill="x", padx=25, pady=5)
+                
+                ctk.CTkLabel(
+                    benefit_item,
+                    text=f"✓ {benefit}",
+                    font=("Arial", 13),
+                    text_color="#333",
+                    anchor="w",
+                    justify="left"
+                ).pack(anchor="w", padx=15, pady=10)
+            
+            # Bottom padding
+            ctk.CTkLabel(benefits_frame, text="", height=15).pack()
+        
+        # === USES ===
+        if 'uses' in plant_data and plant_data['uses']:
+            uses_frame = ctk.CTkFrame(container, fg_color="#fff3e0", corner_radius=15)
+            uses_frame.pack(fill="x", pady=(0, 20))
+            
+            title = ctk.CTkLabel(
+                uses_frame,
+                text="🌿 Common Uses",
+                font=("Arial", 22, "bold"),
+                text_color="#e65100",
+                anchor="w"
+            )
+            title.pack(anchor="w", padx=25, pady=(20, 10))
+            
+            for use in plant_data['uses']:
+                use_item = ctk.CTkFrame(uses_frame, fg_color="white", corner_radius=8)
+                use_item.pack(fill="x", padx=25, pady=5)
+                
+                ctk.CTkLabel(
+                    use_item,
+                    text=f"• {use}",
+                    font=("Arial", 13),
+                    text_color="#333",
+                    anchor="w",
+                    justify="left"
+                ).pack(anchor="w", padx=15, pady=10)
+            
+            # Bottom padding
+            ctk.CTkLabel(uses_frame, text="", height=15).pack()
+        
+        # === SAFETY WARNING (if applicable) ===
+        if plant_data.get('warning'):
+            warning_frame = ctk.CTkFrame(container, fg_color="#ffebee", corner_radius=15)
+            warning_frame.pack(fill="x", pady=(0, 30))
+            
+            ctk.CTkLabel(
+                warning_frame,
+                text="⚠️ Safety Information",
+                font=("Arial", 18, "bold"),
+                text_color="#c62828",
+                anchor="w"
+            ).pack(anchor="w", padx=25, pady=(15, 5))
+            
+            ctk.CTkLabel(
+                warning_frame,
+                text=plant_data['warning'],
+                font=("Arial", 13),
+                text_color="#333",
+                wraplength=850,
+                justify="left",
+                anchor="w"
+            ).pack(anchor="w", padx=25, pady=(0, 15))
+    
+    def _create_section(self, parent, title, content):
+        """Helper to create a text section"""
+        section = ctk.CTkFrame(parent, fg_color="#f8f9fa", corner_radius=15)
+        section.pack(fill="x", pady=(0, 20))
+        
+        title_label = ctk.CTkLabel(
+            section,
+            text=title,
+            font=("Arial", 22, "bold"),
+            text_color="#295222",
+            anchor="w"
+        )
+        title_label.pack(anchor="w", padx=25, pady=(20, 10))
+        
+        content_label = ctk.CTkLabel(
+            section,
+            text=content,
+            font=("Arial", 13),
+            text_color="#333",
+            wraplength=850,
+            justify="left",
+            anchor="w"
+        )
+        content_label.pack(anchor="w", padx=25, pady=(0, 20))
+
+        
 
 if __name__ == "__main__":
     app = HerbalScannerApp()
