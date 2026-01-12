@@ -10,67 +10,121 @@ import os
 from datetime import datetime
 import time
 from functools import wraps
+import sqlite3
+import hashlib
 
-GEMINI_API_KEY = 'AIzaSyDusA-lDLw_kg_1PJzo6FZY0RtFQGKhkTc'
-
-# Using the Lite model for 1,000 free requests per day
+# -------------------- CONFIGURATION --------------------
+GEMINI_API_KEY = 'AIzaSyDusA-lDLw_kg_1PJzo6FZY0RtFQGKhkTc' # Note: Keep your API key private
 API_URL = f'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key={GEMINI_API_KEY}'
-
-# Storage for scan history
 HISTORY_FILE = 'scan_history.json'
+DB_FILE = 'user_data.db'
 
-# Rate limiting: 15 RPM means one request every 4 seconds is safe
+# Rate limiting settings (15 RPM safe limit)
 last_api_call = 0
-MIN_CALL_INTERVAL = 4  
+MIN_CALL_INTERVAL = 4
+
+# -------------------- DATABASE FUNCTIONS --------------------
+def init_db():
+    """Initialize the local SQLite database for users"""
+    try:
+        conn = sqlite3.connect(DB_FILE)
+        c = conn.cursor()
+        # Create users table if not exists
+        c.execute('''
+            CREATE TABLE IF NOT EXISTS users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                full_name TEXT NOT NULL,
+                email TEXT UNIQUE NOT NULL,
+                password_hash TEXT NOT NULL,
+                created_at TEXT
+            )
+        ''')
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        messagebox.showerror("Database Error", f"Could not initialize database: {e}")
+
+def hash_password(password):
+    """Hash a password using SHA-256 for security"""
+    return hashlib.sha256(password.encode()).hexdigest()
+
+def register_user(full_name, email, password):
+    """Register a new user in the database"""
+    try:
+        conn = sqlite3.connect(DB_FILE)
+        c = conn.cursor()
+        
+        # Check if email already exists
+        c.execute("SELECT email FROM users WHERE email=?", (email,))
+        if c.fetchone():
+            conn.close()
+            return False, "Email already registered."
+        
+        hashed_pw = hash_password(password)
+        created_at = datetime.now().isoformat()
+        
+        c.execute("INSERT INTO users (full_name, email, password_hash, created_at) VALUES (?, ?, ?, ?)",
+                  (full_name, email, hashed_pw, created_at))
+        conn.commit()
+        conn.close()
+        return True, "Account created successfully!"
+    except Exception as e:
+        return False, str(e)
+
+def login_user(email, password):
+    """Verify user credentials"""
+    try:
+        conn = sqlite3.connect(DB_FILE)
+        c = conn.cursor()
+        
+        hashed_pw = hash_password(password)
+        
+        c.execute("SELECT * FROM users WHERE email=? AND password_hash=?", (email, hashed_pw))
+        user = c.fetchone()
+        conn.close()
+        
+        if user:
+            # user structure: (id, name, email, pass, date)
+            return True, user[1] # Return success and Full Name
+        else:
+            return False, "Invalid email or password."
+    except Exception as e:
+        return False, str(e)
 
 # -------------------- HELPER FUNCTIONS --------------------
 def encode_image_to_base64(image_path, max_size=(600, 600)):
-    """Convert image file to base64 string with size optimization"""
     try:
         img = Image.open(image_path)
         img.thumbnail(max_size, Image.Resampling.LANCZOS)
-        
         if img.mode in ('RGBA', 'LA', 'P'):
             background = Image.new('RGB', img.size, (255, 255, 255))
             if img.mode == 'P':
                 img = img.convert('RGBA')
             background.paste(img, mask=img.split()[-1] if img.mode in ('RGBA', 'LA') else None)
             img = background
-        
         buffered = BytesIO()
         img.save(buffered, format="JPEG", quality=85, optimize=True)
-        img_bytes = buffered.getvalue()
-        
-        return base64.b64encode(img_bytes).decode('utf-8')
+        return base64.b64encode(buffered.getvalue()).decode('utf-8')
     except Exception as e:
         raise Exception(f"Image encoding failed: {str(e)}")
 
 def rate_limit(func):
-    """Decorator to prevent rapid API calls based on Lite limits"""
     @wraps(func)
     def wrapper(*args, **kwargs):
         global last_api_call
         current_time = time.time()
         time_since_last = current_time - last_api_call
-        
         if time_since_last < MIN_CALL_INTERVAL:
             wait_time = MIN_CALL_INTERVAL - time_since_last
-            raise Exception(f"Please wait {wait_time:.1f} seconds before analyzing again.")
-        
+            raise Exception(f"Please wait {wait_time:.1f} seconds.")
         last_api_call = current_time
         return func(*args, **kwargs)
-    
     return wrapper
 
 @rate_limit
 def analyze_plant_with_gemini(image_path):
-    """Send image to Gemini 2.5 Flash-Lite API"""
     try:
-        # Re-verify local URL matches global config
-        target_url = API_URL
-        
-        image_base64 = encode_image_to_base64(image_path, max_size=(600, 600))
-        
+        image_base64 = encode_image_to_base64(image_path)
         prompt = """Analyze this plant for the Philippines. Provide in plain text (no asterisks/markdown):
 1. Common Name (Philippine)
 2. Scientific Name
@@ -80,116 +134,53 @@ def analyze_plant_with_gemini(image_path):
 6. Safety Notes"""
 
         payload = {
-            "contents": [{
-                "parts": [
-                    {"text": prompt},
-                    {
-                        "inline_data": {
-                            "mime_type": "image/jpeg",
-                            "data": image_base64
-                        }
-                    }
-                ]
-            }],
-            "generationConfig": {
-                "temperature": 0.4,
-                "topK": 32,
-                "topP": 1,
-                "maxOutputTokens": 800,
-            },
+            "contents": [{"parts": [{"text": prompt}, {"inline_data": {"mime_type": "image/jpeg", "data": image_base64}}]}],
+            "generationConfig": {"temperature": 0.4, "maxOutputTokens": 800},
             "safetySettings": [
                 {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
-                {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
-                {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
                 {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"}
             ]
         }
         
-        response = requests.post(target_url, json=payload, headers={"Content-Type": "application/json"})
-        
+        response = requests.post(API_URL, json=payload, headers={"Content-Type": "application/json"})
         if response.status_code != 200:
-            error_data = response.json()
-            error_msg = error_data.get('error', {}).get('message', f'HTTP {response.status_code}')
-            raise Exception(f"API Error: {error_msg}")
+            raise Exception(f"API Error: {response.status_code}")
         
         data = response.json()
-        
         if data.get('candidates') and len(data['candidates']) > 0:
-            candidate = data['candidates'][0]
-            
-            if candidate.get('finishReason') == 'SAFETY':
-                raise Exception("The AI blocked this content for safety reasons.")
-                
-            if candidate.get('content', {}).get('parts', [{}])[0].get('text'):
-                ai_response = candidate['content']['parts'][0]['text']
-                
-                # Clean formatting
-                ai_response = ai_response.replace('**', '').replace('*', '')
-                ai_response = ai_response.replace('###', '').replace('##', '').replace('#', '')
-                ai_response = ai_response.replace('_', '').strip()
-                
-                usage_metadata = data.get('usageMetadata', {})
-                
-                return {
-                    'success': True,
-                    'response': ai_response,
-                    'timestamp': datetime.now().isoformat(),
-                    'tokens_used': usage_metadata.get('totalTokenCount', 'N/A')
-                }
+            text = data['candidates'][0]['content']['parts'][0]['text']
+            # Clean text
+            clean_text = text.replace('**', '').replace('*', '').replace('###', '').replace('#', '').strip()
+            return {'success': True, 'response': clean_text, 'timestamp': datetime.now().isoformat()}
         
-        raise Exception('Invalid response format or blocked content.')
-            
+        raise Exception('Invalid response format')
     except Exception as e:
-        return {
-            'success': False,
-            'error': str(e),
-            'timestamp': datetime.now().isoformat()
-        }
-    
-def save_to_history(image_path, analysis_result):
-    """Save scan result to history file"""
+        return {'success': False, 'error': str(e), 'timestamp': datetime.now().isoformat()}
+
+def save_to_history(image_path, result):
     try:
-        # Load existing history
         if os.path.exists(HISTORY_FILE):
-            with open(HISTORY_FILE, 'r') as f:
-                history = json.load(f)
-        else:
-            history = []
+            with open(HISTORY_FILE, 'r') as f: history = json.load(f)
+        else: history = []
         
-        # Add new entry
         entry = {
             'id': datetime.now().strftime('%Y%m%d_%H%M%S'),
             'image_path': image_path,
-            'timestamp': analysis_result['timestamp'],
-            'response': analysis_result.get('response', ''),
-            'success': analysis_result['success'],
-            'tokens_used': analysis_result.get('tokens_used', 'N/A')
+            'timestamp': result['timestamp'],
+            'response': result.get('response', ''),
+            'success': result['success']
         }
-        
-        history.insert(0, entry)  # Add to beginning
-        
-        # Keep only last 50 entries to save space
-        history = history[:50]
-        
-        # Save updated history
-        with open(HISTORY_FILE, 'w') as f:
-            json.dump(history, f, indent=2)
-            
+        history.insert(0, entry)
+        with open(HISTORY_FILE, 'w') as f: json.dump(history[:50], f, indent=2)
         return True
     except Exception as e:
-        print(f"Error saving to history: {e}")
+        print(f"History Save Error: {e}")
         return False
 
 def load_history():
-    """Load scan history from file"""
-    try:
-        if os.path.exists(HISTORY_FILE):
-            with open(HISTORY_FILE, 'r') as f:
-                return json.load(f)
-        return []
-    except Exception as e:
-        print(f"Error loading history: {e}")
-        return []
+    if os.path.exists(HISTORY_FILE):
+        with open(HISTORY_FILE, 'r') as f: return json.load(f)
+    return []
 
 # -------------------- UI SETTINGS --------------------
 ctk.set_appearance_mode("light")
@@ -199,16 +190,21 @@ ctk.set_default_color_theme("green")
 class HerbalScannerApp(ctk.CTk):
     def __init__(self):
         super().__init__()
+        # Initialize Database on startup
+        init_db()
+        
         self.title("Herbal Scanner")
-        self.geometry("950x610")
+        self.geometry("950x670")
         self.resizable(False, False)
+        
+        # Track current user
+        self.current_user_name = None
 
         self.grid_rowconfigure(0, weight=1)
         self.grid_columnconfigure(0, weight=1)
 
-        # Initialize all frames
         self.frames = {}
-        for F in (LoginFrame, HomeFrame, ScannerFrame, HistoryFrame):
+        for F in (LoginFrame, RegisterFrame, HomeFrame, ScannerFrame, HistoryFrame):
             frame = F(self)
             self.frames[F] = frame
             frame.grid(row=0, column=0, sticky="nsew")
@@ -218,8 +214,7 @@ class HerbalScannerApp(ctk.CTk):
     def show_frame(self, frame_class):
         frame = self.frames[frame_class]
         frame.tkraise()
-        
-        # Refresh history when showing history frame
+        # Auto-refresh history when opening that tab
         if frame_class == HistoryFrame:
             frame.refresh_history()
 
@@ -230,9 +225,8 @@ class Header(ctk.CTkFrame):
         self.controller = controller
         self.pack_propagate(False)
 
-        ctk.CTkLabel(self, text="🌿 HerbalScan AI", font=("Arial", 24, "bold"), text_color="white").pack(side="left", padx=20)
+        ctk.CTkLabel(self, text="🌿 HerbalScan ", font=("Arial", 24, "bold"), text_color="white").pack(side="left", padx=20)
 
-        # Navigation Buttons
         for nav, target in [("HOME", HomeFrame), ("SCANNER", ScannerFrame), ("HISTORY", HistoryFrame)]:
             ctk.CTkButton(
                 self, text=nav, fg_color="#406343", text_color="white",
@@ -241,46 +235,131 @@ class Header(ctk.CTkFrame):
             ).pack(side="left", padx=5)
 
         ctk.CTkButton(self, text="LOGOUT", fg_color="#dc3545", text_color="white",
-                      hover_color="#c82333", command=lambda: controller.show_frame(LoginFrame),
+                      hover_color="#c82333", command=lambda: self.logout(controller),
                       corner_radius=8, height=35).pack(side="right", padx=20)
+    
+    def logout(self, controller):
+        controller.current_user_name = None
+        controller.show_frame(LoginFrame)
 
 # -------------------- LOGIN FRAME --------------------
 class LoginFrame(ctk.CTkFrame):
     def __init__(self, parent):
-        super().__init__(parent, fg_color="white")
-        self.grid_columnconfigure(0, weight=1)
-        self.grid_columnconfigure(1, weight=1)
-        self.grid_rowconfigure(0, weight=1)
+        super().__init__(parent, fg_color="#f0f2f0")
+        self.parent = parent
+        
+        self.login_box = ctk.CTkFrame(self, fg_color="white", width=350, height=450, corner_radius=15)
+        self.login_box.place(relx=0.5, rely=0.5, anchor="center")
+        self.login_box.pack_propagate(False)
 
-        form_frame = ctk.CTkFrame(self, fg_color="white")
-        form_frame.grid(row=0, column=0, sticky="nsew", padx=60, pady=0)
+        ctk.CTkLabel(self.login_box, text="🌿", font=("Arial", 40)).pack(pady=(40, 10))
+        ctk.CTkLabel(self.login_box, text="HerbalScan Login", font=("Arial", 22, "bold"), text_color="#295222").pack(pady=(0,20))
 
-        ctk.CTkLabel(form_frame, text="Welcome to HerbalScan!", font=("Arial", 24, "bold"), text_color="#295222").pack(pady=(0,10))
-
-        self.email_entry = ctk.CTkEntry(form_frame, placeholder_text="Email address", width=250)
+        self.email_entry = ctk.CTkEntry(self.login_box, placeholder_text="Email Address", width=250, height=40)
         self.email_entry.pack(pady=10)
-        self.password_entry = ctk.CTkEntry(form_frame, placeholder_text="Password", show="*", width=250)
+        
+        self.password_entry = ctk.CTkEntry(self.login_box, placeholder_text="Password", show="*", width=250, height=40)
         self.password_entry.pack(pady=10)
 
-        login_btn = ctk.CTkButton(form_frame, text="Login", width=250, fg_color="#295222", 
-                                  hover_color="#1f3d1a", command=lambda: parent.show_frame(HomeFrame))
+        login_btn = ctk.CTkButton(self.login_box, text="Login", width=250, height=40, fg_color="#295222", 
+                                  hover_color="#1f3d1a", font=("Arial", 14, "bold"),
+                                  command=self.perform_login)
         login_btn.pack(pady=20)
 
+        ctk.CTkButton(self.login_box, text="Create new account", fg_color="transparent", 
+                      text_color="#295222", hover_color="#f0f0f0",
+                      command=lambda: parent.show_frame(RegisterFrame)).pack(pady=5)
+    
+    def perform_login(self):
+        email = self.email_entry.get().strip()
+        password = self.password_entry.get().strip()
+        
+        if not email or not password:
+            messagebox.showwarning("Input Error", "Please fill in all fields.")
+            return
+
+        success, message = login_user(email, password)
+        if success:
+            self.parent.current_user_name = message
+            messagebox.showinfo("Success", f"Welcome back, {message}!")
+            self.email_entry.delete(0, 'end')
+            self.password_entry.delete(0, 'end')
+            self.parent.show_frame(HomeFrame)
+        else:
+            messagebox.showerror("Login Failed", message)
+
+# -------------------- REGISTER FRAME --------------------
+class RegisterFrame(ctk.CTkFrame):
+    def __init__(self, parent):
+        super().__init__(parent, fg_color="#f0f2f0")
+        self.parent = parent
+        
+        self.reg_box = ctk.CTkFrame(self, fg_color="white", width=350, height=520, corner_radius=15)
+        self.reg_box.place(relx=0.5, rely=0.5, anchor="center")
+        self.reg_box.pack_propagate(False)
+
+        ctk.CTkLabel(self.reg_box, text="📝", font=("Arial", 40)).pack(pady=(30, 10))
+        ctk.CTkLabel(self.reg_box, text="Create Account", font=("Arial", 22, "bold"), text_color="#295222").pack(pady=(0,20))
+
+        self.fullname_entry = ctk.CTkEntry(self.reg_box, placeholder_text="Full Name", width=250, height=40)
+        self.fullname_entry.pack(pady=5)
+
+        self.email_entry = ctk.CTkEntry(self.reg_box, placeholder_text="Email Address", width=250, height=40)
+        self.email_entry.pack(pady=5)
+        
+        self.password_entry = ctk.CTkEntry(self.reg_box, placeholder_text="Password", show="*", width=250, height=40)
+        self.password_entry.pack(pady=5)
+
+        self.confirm_pass_entry = ctk.CTkEntry(self.reg_box, placeholder_text="Confirm Password", show="*", width=250, height=40)
+        self.confirm_pass_entry.pack(pady=5)
+
+        ctk.CTkButton(self.reg_box, text="Register", width=250, height=40, fg_color="#406343", 
+                      hover_color="#2d4a30", font=("Arial", 14, "bold"),
+                      command=self.perform_register).pack(pady=20)
+
+        ctk.CTkButton(self.reg_box, text="Back to Login", fg_color="transparent", 
+                      text_color="gray", hover_color="#f0f0f0",
+                      command=lambda: parent.show_frame(LoginFrame)).pack(pady=5)
+
+    def perform_register(self):
+        fullname = self.fullname_entry.get().strip()
+        email = self.email_entry.get().strip()
+        password = self.password_entry.get().strip()
+        confirm = self.confirm_pass_entry.get().strip()
+        
+        if not fullname or not email or not password:
+            messagebox.showwarning("Error", "All fields are required.")
+            return
+        
+        if password != confirm:
+            messagebox.showerror("Error", "Passwords do not match.")
+            return
+            
+        success, message = register_user(fullname, email, password)
+        
+        if success:
+            messagebox.showinfo("Success", message)
+            # Clear fields
+            self.fullname_entry.delete(0, 'end')
+            self.email_entry.delete(0, 'end')
+            self.password_entry.delete(0, 'end')
+            self.confirm_pass_entry.delete(0, 'end')
+            self.parent.show_frame(LoginFrame)
+        else:
+            messagebox.showerror("Registration Failed", message)
 
 # -------------------- HOME FRAME --------------------
 class HomeFrame(ctk.CTkFrame):
     def __init__(self, parent):
         super().__init__(parent, fg_color="white")
-        Header(self, parent).pack(fill="x", pady=(10, 0))
+        # FIX: Remove padding so header touches top
+        Header(self, parent).pack(fill="x", pady=0)
         
-        # Feature cards
         features_frame = ctk.CTkFrame(self, fg_color="white")
         features_frame.pack(expand=True, fill="both", padx=20, pady=10)
         
-        features = [
-            ("📸 Scanner", "Capture or upload plant images", ScannerFrame),
-            ("📚 History", "View your scan history", HistoryFrame)
-        ]
+        features = [(" Scanner", "Capture or upload plant images", ScannerFrame),
+                    (" History", "View your scan history", HistoryFrame)]
         
         for i, (title, desc, target) in enumerate(features):
             card = ctk.CTkFrame(features_frame, fg_color="#f0f0f0", corner_radius=10)
@@ -301,7 +380,8 @@ class ScannerFrame(ctk.CTkFrame):
         self.popup_visible = False
         self.current_image_path = None
 
-        Header(self, parent).pack(fill="x", pady=(10, 0))
+        # FIX: Remove padding so header touches top
+        Header(self, parent).pack(fill="x", pady=0)
 
         content = ctk.CTkFrame(self, fg_color="white")
         content.pack(fill="both", expand=True, padx=20, pady=10)
@@ -310,7 +390,7 @@ class ScannerFrame(ctk.CTkFrame):
         # Left: Scanner
         scanner_col = ctk.CTkFrame(content, fg_color="white")
         scanner_col.grid(row=0, column=0, sticky="nsew", padx=10)
-        ctk.CTkLabel(scanner_col, text="📷 AI Scanner", font=("Arial", 20, "bold"), text_color="#295222").pack(pady=10)
+        ctk.CTkLabel(scanner_col, text="Scanner", font=("Arial", 20, "bold"), text_color="#295222").pack(pady=10)
 
         self.camera_placeholder = ctk.CTkLabel(scanner_col, text="[Camera Preview]", 
                                                 fg_color="#e0e0e0", text_color="gray", 
@@ -319,12 +399,12 @@ class ScannerFrame(ctk.CTkFrame):
 
         btn_row = ctk.CTkFrame(scanner_col, fg_color="white")
         btn_row.pack(pady=5)
-        ctk.CTkButton(btn_row, text="📷 Capture", fg_color="#295222", width=110, 
+        ctk.CTkButton(btn_row, text=" Capture", fg_color="#295222", width=110, 
                       command=self.open_camera).pack(side="left", padx=5)
-        ctk.CTkButton(btn_row, text="📁 Upload", fg_color="#406343", width=110, 
+        ctk.CTkButton(btn_row, text=" Upload", fg_color="#406343", width=110, 
                       command=self.upload_image).pack(side="left", padx=5)
         
-        self.analyze_btn = ctk.CTkButton(btn_row, text="🔍 Analyze", fg_color="#4CAF50", width=110, 
+        self.analyze_btn = ctk.CTkButton(btn_row, text=" Analyze", fg_color="#4CAF50", width=110, 
                                          command=self.analyze_current_image)
         self.analyze_btn.pack(side="left", padx=5)
 
@@ -334,267 +414,183 @@ class ScannerFrame(ctk.CTkFrame):
         # Right: Results
         self.result_col = ctk.CTkScrollableFrame(content, fg_color="#f8f9fa", corner_radius=10)
         self.result_col.grid(row=0, column=1, sticky="nsew", padx=10)
-        ctk.CTkLabel(self.result_col, text="AI Analysis Result", 
-                     font=("Arial", 20, "bold"), text_color="#295222").pack(pady=10)
+        ctk.CTkLabel(self.result_col, text="Analysis Result", font=("Arial", 20, "bold"), text_color="#295222").pack(pady=10)
         
-        self.result_text = ctk.CTkTextbox(self.result_col, fg_color="white", 
-                                          text_color="#333", width=400, height=500,
-                                          wrap="word", font=("Arial", 12))
+        self.result_text = ctk.CTkTextbox(self.result_col, fg_color="white", text_color="#333", width=400, height=500, wrap="word", font=("Arial", 12))
         self.result_text.pack(pady=10, padx=10, fill="both", expand=True)
-        self.result_text.insert("1.0", "Upload or capture an image, then click 'Analyze' to identify the plant using AI.\n\n⚡ Optimized: Uses 80% fewer tokens per scan!")
+        self.result_text.insert("1.0", "Upload or capture an image, then click 'Analyze'.")
 
         # Popup Guide
         self.popup = ctk.CTkFrame(scanner_col, fg_color="white", corner_radius=10, border_width=2, border_color="#295222")
-        ctk.CTkLabel(self.popup, text="📖 Scanner Guide", font=("Arial", 16, "bold"), text_color="#295222").pack(pady=(10,5))
-        guide_text = """1. Click 'Capture' to use your camera
-                        2. Press 'c' to capture, 'q' to quit
-                        3. Or click 'Upload' to select an image
-                        4. Click 'Analyze' to identify the plant
-                        5. Wait 3 seconds between scans
-                        6. Images auto-compressed to save tokens"""
-        ctk.CTkLabel(self.popup, text=guide_text, justify="left", text_color="black", wraplength=280).pack(pady=(0,10), padx=10)
+        ctk.CTkLabel(self.popup, text="Guide", font=("Arial", 16, "bold"), text_color="#295222").pack(pady=(10,5))
+        ctk.CTkLabel(self.popup, text="1. Capture or Upload\n2. Click Analyze\n3. Wait for AI", text_color="black").pack(pady=(0,10), padx=10)
         self.popup.place_forget()
 
     def open_camera(self):
-        """Open camera for live capture"""
-        cap = cv2.VideoCapture(0)
-        if not cap.isOpened():
-            messagebox.showerror("Error", "❌ Could not access camera.")
+        cap = None
+        for idx in range(0, 6):
+            try:
+                c = cv2.VideoCapture(idx, cv2.CAP_V4L2)
+                if c.isOpened():
+                    cap = c; break
+                c.release()
+            except: pass
+            c = cv2.VideoCapture(idx)
+            if c.isOpened():
+                cap = c; break
+            c.release()
+
+        if cap is None or not cap.isOpened():
+            messagebox.showerror("Error", "❌ No camera found.")
             return
 
-        cv2.namedWindow("Camera - Press 'c' to capture, 'q' to quit")
+        cv2.namedWindow("Press 'c' to capture")
         while True:
             ret, frame = cap.read()
-            if not ret:
-                break
-            cv2.imshow("Camera - Press 'c' to capture, 'q' to quit", frame)
-            key = cv2.waitKey(1)
-            if key == ord('q'):
-                break
-            elif key == ord('c'):
-                # Save captured image
-                if not os.path.exists('captures'):
-                    os.makedirs('captures')
+            if not ret: break
+            cv2.imshow("Press 'c' to capture", frame)
+            if cv2.waitKey(1) == ord('c'):
+                if not os.path.exists('captures'): os.makedirs('captures')
                 img_name = f"captures/capture_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jpg"
                 cv2.imwrite(img_name, frame)
                 self.current_image_path = img_name
                 self.display_image(img_name)
-                messagebox.showinfo("Success", "✅ Image captured! Click 'Analyze' to identify.")
                 break
-
         cap.release()
         cv2.destroyAllWindows()
 
     def upload_image(self):
-        """Upload image from file system"""
-        file_path = filedialog.askopenfilename(
-            title="Select Plant Image", 
-            filetypes=[("Image Files", "*.jpg *.jpeg *.png *.bmp")]
-        )
+        file_path = filedialog.askopenfilename(filetypes=[("Image Files", "*.jpg *.jpeg *.png")])
         if file_path:
             self.current_image_path = file_path
             self.display_image(file_path)
-            messagebox.showinfo("Success", "✅ Image loaded! Click 'Analyze' to identify.")
 
     def display_image(self, file_path):
-        """Display selected image in preview"""
-        try:
-            img = Image.open(file_path)
-            img.thumbnail((350, 350))
-            self.tk_img = ImageTk.PhotoImage(img)
-            self.camera_placeholder.configure(image=self.tk_img, text="")
-        except Exception as e:
-            messagebox.showerror("Error", f"Failed to load image: {e}")
+        img = Image.open(file_path).convert("RGB")
+        img.thumbnail((350, 350), Image.Resampling.LANCZOS)
+        ctk_img = ctk.CTkImage(light_image=img, size=img.size)
+        self.camera_placeholder.configure(image=ctk_img, text="")
+        self.camera_placeholder._img_ref = ctk_img
 
     def analyze_current_image(self):
-        """Analyze current image using Gemini API"""
         if not self.current_image_path:
-            messagebox.showwarning("No Image", "Please capture or upload an image first!")
+            messagebox.showwarning("No Image", "Select an image first!")
             return
         
-        # Disable button during analysis
         self.analyze_btn.configure(state="disabled", text="⏳ Analyzing...")
-        
-        # Show loading message
         self.result_text.delete("1.0", "end")
-        self.result_text.insert("1.0", "🔄 Analyzing plant with Gemini AI...\n\nThis may take a few seconds...")
+        self.result_text.insert("1.0", "🔄 Analyzing...")
         self.update()
         
-        # Analyze with Gemini
         result = analyze_plant_with_gemini(self.current_image_path)
-        
-        # Re-enable button
         self.analyze_btn.configure(state="normal", text="🔍 Analyze")
-        
-        # Display results
         self.result_text.delete("1.0", "end")
         
         if result['success']:
-            self.result_text.insert("end", "✅ ANALYSIS COMPLETE\n")
-            self.result_text.insert("end", "=" * 50 + "\n\n")
             self.result_text.insert("end", result['response'])
-            self.result_text.insert("end", "\n\n" + "=" * 50 + "\n")
-            self.result_text.insert("end", f"📅 Analyzed: {datetime.fromisoformat(result['timestamp']).strftime('%Y-%m-%d %H:%M:%S')}\n")
-            self.result_text.insert("end", f"⚡ Tokens Used: {result.get('tokens_used', 'N/A')}")
-            
-            # Save to history
             save_to_history(self.current_image_path, result)
-            messagebox.showinfo("Success", "✅ Plant identified! Check History for saved scans.")
         else:
-            self.result_text.insert("end", "❌ ANALYSIS FAILED\n")
-            self.result_text.insert("end", "=" * 50 + "\n\n")
-            self.result_text.insert("end", f"Error: {result.get('error', 'Unknown error')}\n\n")
-            self.result_text.insert("end", "Please try again with a clearer image.")
-            messagebox.showerror("Error", f"Analysis failed: {result.get('error', 'Unknown error')}")
+            self.result_text.insert("end", f"Error: {result.get('error')}")
 
     def toggle_popup(self):
-        """Toggle guide popup"""
-        if self.popup_visible:
-            self.popup.place_forget()
-        else:
-            self.popup.place(relx=0.5, rely=0.85, anchor="center")
+        if self.popup_visible: self.popup.place_forget()
+        else: self.popup.place(relx=0.5, rely=0.45, anchor="center")
         self.popup_visible = not self.popup_visible
 
 # -------------------- HISTORY FRAME --------------------
 class HistoryFrame(ctk.CTkFrame):
     def __init__(self, parent):
         super().__init__(parent, fg_color="white")
-        self.parent = parent
+        # FIX: Remove padding so header touches top
+        Header(self, parent).pack(fill="x", pady=0)
         
-        Header(self, parent).pack(fill="x", pady=(10, 0))
-        
-        # Header
         header_frame = ctk.CTkFrame(self, fg_color="white")
         header_frame.pack(fill="x", padx=20, pady=10)
+        ctk.CTkLabel(header_frame, text="📚 Scan History", font=("Arial", 24, "bold"), text_color="#295222").pack(side="left")
         
-        ctk.CTkLabel(header_frame, text="📚 Scan History", 
-                     font=("Arial", 24, "bold"), text_color="#295222").pack(side="left")
-        
-        ctk.CTkButton(header_frame, text="🔄 Refresh", fg_color="#295222",
-                      command=self.refresh_history).pack(side="right", padx=5)
-        ctk.CTkButton(header_frame, text="🗑️ Clear All", fg_color="#dc3545",
+        # CHANGED: "Refresh" is now "Clear History"
+        ctk.CTkButton(header_frame, text="🗑️ Clear History", fg_color="#dc3545", hover_color="#c82333", 
                       command=self.clear_history).pack(side="right")
         
-        # Scrollable history list
         self.history_list = ctk.CTkScrollableFrame(self, fg_color="#f8f9fa")
         self.history_list.pack(fill="both", expand=True, padx=20, pady=10)
-        
         self.refresh_history()
     
     def refresh_history(self):
-        """Reload and display history"""
-        # Clear existing widgets
-        for widget in self.history_list.winfo_children():
-            widget.destroy()
-        
+        for widget in self.history_list.winfo_children(): widget.destroy()
         history = load_history()
         
         if not history:
-            ctk.CTkLabel(self.history_list, text="No scan history yet.\n\nStart scanning plants to build your history!", 
-                         font=("Arial", 14), text_color="gray").pack(pady=50)
-            return
+             ctk.CTkLabel(self.history_list, text="No scan history yet.", text_color="gray", font=("Arial", 14)).pack(pady=40)
+             return
+
+        for i, entry in enumerate(history): self.create_history_card(entry, i)
         
-        # Display each history entry
-        for i, entry in enumerate(history):
-            self.create_history_card(entry, i)
+    def clear_history(self):
+        """Deletes history file and refreshes UI"""
+        if messagebox.askyesno("Confirm Delete", "Delete all scan history?"):
+            try:
+                if os.path.exists(HISTORY_FILE): os.remove(HISTORY_FILE)
+                self.refresh_history()
+                messagebox.showinfo("Success", "History deleted.")
+            except Exception as e:
+                messagebox.showerror("Error", str(e))
     
     def create_history_card(self, entry, index):
-        """Create a card for each history entry"""
         card = ctk.CTkFrame(self.history_list, fg_color="white", corner_radius=10)
         card.pack(fill="x", pady=5, padx=5)
         
-        # Left: Image thumbnail
-        left_frame = ctk.CTkFrame(card, fg_color="white")
-        left_frame.pack(side="left", padx=10, pady=10)
-        
         try:
-            if os.path.exists(entry['image_path']):
-                img = Image.open(entry['image_path'])
-                img.thumbnail((80, 80))
-                tk_img = ImageTk.PhotoImage(img)
-                img_label = ctk.CTkLabel(left_frame, image=tk_img, text="")
-                img_label.image = tk_img  # Keep reference
-                img_label.pack()
-            else:
-                ctk.CTkLabel(left_frame, text="[No Image]", fg_color="#e0e0e0", 
-                             width=80, height=80).pack()
+            img = Image.open(entry['image_path'])
+            img.thumbnail((80, 80))
+            tk_img = ImageTk.PhotoImage(img)
+            lbl = ctk.CTkLabel(card, image=tk_img, text="")
+            lbl.image = tk_img
+            lbl.pack(side="left", padx=10, pady=10)
         except:
-            ctk.CTkLabel(left_frame, text="[Error]", fg_color="#e0e0e0", 
-                         width=80, height=80).pack()
+            ctk.CTkLabel(card, text="[No Image]", width=80).pack(side="left", padx=10)
+
+        plant_name = entry.get('response', 'Unknown').split('\n')[0][:50]
+        info_frame = ctk.CTkFrame(card, fg_color="white")
+        info_frame.pack(side="left", fill="both", expand=True, padx=10)
+        ctk.CTkLabel(info_frame, text=plant_name, font=("Arial", 14, "bold"), text_color="#295222", anchor="w").pack(fill="x")
+        ctk.CTkLabel(info_frame, text=entry['timestamp'], text_color="gray", anchor="w", font=("Arial", 10)).pack(fill="x")
         
-        # Right: Details
-        right_frame = ctk.CTkFrame(card, fg_color="white")
-        right_frame.pack(side="left", fill="both", expand=True, padx=10, pady=10)
-        
-        # Extract plant name from response
-        plant_name = "Unknown Plant"
-        if entry['success'] and entry.get('response'):
-            lines = entry['response'].split('\n')
-            for line in lines:
-                if line.strip() and not line.startswith('1.'):
-                    plant_name = line.strip()[:50]
-                    break
-        
-        ctk.CTkLabel(right_frame, text=f"#{index + 1}: {plant_name}", 
-                     font=("Arial", 14, "bold"), text_color="#295222", 
-                     anchor="w").pack(fill="x")
-        
-        timestamp_str = datetime.fromisoformat(entry['timestamp']).strftime('%Y-%m-%d %H:%M:%S')
-        ctk.CTkLabel(right_frame, text=f"📅 {timestamp_str} | ⚡ Tokens: {entry.get('tokens_used', 'N/A')}", 
-                     text_color="gray", anchor="w", font=("Arial", 10)).pack(fill="x")
-        
-        # View button
-        ctk.CTkButton(card, text="👁️ View", fg_color="#295222", width=80,
-                      command=lambda e=entry: self.view_detail(e)).pack(side="right", padx=10)
-    
+        ctk.CTkButton(card, text="View", fg_color="#295222", width=80, command=lambda e=entry: self.view_detail(e)).pack(side="right", padx=10)
+
     def view_detail(self, entry):
-        """Show detailed view of a history entry"""
         detail_window = ctk.CTkToplevel(self)
         detail_window.title("Scan Detail")
         detail_window.geometry("700x600")
         
-        # Image
-        img_frame = ctk.CTkFrame(detail_window)
-        img_frame.pack(pady=10, padx=10, fill="x")
+        # --- FIXED IMAGE FRAME ---
+        img_frame = ctk.CTkFrame(detail_window, height=300) 
+        img_frame.pack_propagate(False) # Forces size
+        img_frame.pack(pady=(10, 0), padx=10, fill="x")
         
         try:
             if os.path.exists(entry['image_path']):
                 img = Image.open(entry['image_path'])
-                img.thumbnail((300, 300))
+                img.thumbnail((500, 280)) 
                 tk_img = ImageTk.PhotoImage(img)
                 img_label = ctk.CTkLabel(img_frame, image=tk_img, text="")
                 img_label.image = tk_img
-                img_label.pack()
+                img_label.place(relx=0.5, rely=0.5, anchor="center")
+            else:
+                ctk.CTkLabel(img_frame, text="[Image Not Available]").place(relx=0.5, rely=0.5, anchor="center")
         except:
-            ctk.CTkLabel(img_frame, text="[Image Not Available]").pack()
+            ctk.CTkLabel(img_frame, text="[Error]").place(relx=0.5, rely=0.5, anchor="center")
         
-        # Response
-        text_frame = ctk.CTkScrollableFrame(detail_window, fg_color="white")
+        # --- FIXED TEXT AREA (WHITE BACKGROUND) ---
+        text_frame = ctk.CTkFrame(detail_window, fg_color="white") 
         text_frame.pack(fill="both", expand=True, padx=10, pady=10)
         
-        response_text = ctk.CTkTextbox(text_frame, wrap="word", font=("Arial", 12))
+        # FIX: Added fg_color="white" and text_color="black" so it blends seamlessly
+        response_text = ctk.CTkTextbox(text_frame, wrap="word", font=("Arial", 12), fg_color="white", text_color="black")
         response_text.pack(fill="both", expand=True)
-        
-        if entry['success']:
-            response_text.insert("1.0", entry.get('response', 'No data'))
-            response_text.insert("end", f"\n\n⚡ Tokens Used: {entry.get('tokens_used', 'N/A')}")
-        else:
-            response_text.insert("1.0", f"Analysis failed\n\nError: {entry.get('error', 'Unknown')}")
-        
+        response_text.insert("1.0", entry.get('response', 'No Data'))
         response_text.configure(state="disabled")
-    
-    def clear_history(self):
-        """Clear all history"""
-        if messagebox.askyesno("Confirm", "Are you sure you want to clear all history?"):
-            try:
-                if os.path.exists(HISTORY_FILE):
-                    os.remove(HISTORY_FILE)
-                self.refresh_history()
-                messagebox.showinfo("Success", "✅ History cleared!")
-            except Exception as e:
-                messagebox.showerror("Error", f"Failed to clear history: {e}")
 
-# -------------------- RUN APP --------------------
 if __name__ == "__main__":
     app = HerbalScannerApp()
     app.mainloop()
