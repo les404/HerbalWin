@@ -232,15 +232,40 @@ class Header(ctk.CTkFrame):
         self.controller = controller
         self.pack_propagate(False)
 
-        ctk.CTkLabel(self, text="🌿 HerbalScan ", font=("Arial", 24, "bold"), text_color="white").pack(side="left", padx=20)
+        # --- LOGO SECTION ---
+        try:
+            # Load the logo image
+            logo_path = "assets/logo.png"  # Make sure this file exists!
+            if os.path.exists(logo_path):
+                img = Image.open(logo_path)
+                # Resize image to fit header (30x30 pixels is usually good)
+                logo_image = ctk.CTkImage(light_image=img, size=(60, 60))
+                
+                # Create label with Image AND Text
+                ctk.CTkLabel(self, 
+                             text=" HerbalScan", 
+                             image=logo_image, 
+                             compound="left",      # Puts image to the left of text
+                             font=("Arial", 24, "bold"), 
+                             text_color="white").pack(side="left", padx=20)
+            else:
+                # Fallback if file is missing
+                raise Exception("Logo file not found")
+                
+        except Exception as e:
+            print(f"Logo Error: {e}")
+            # Fallback to Emoji if image fails
+            ctk.CTkLabel(self, text="🌿 HerbalScan ", font=("Arial", 24, "bold"), text_color="white").pack(side="left", padx=20)
 
+        # --- NAVIGATION BUTTONS ---
         for nav, target in [("HOME", HomeFrame), ("SCANNER", ScannerFrame), ("HISTORY", HistoryFrame)]:
             ctk.CTkButton(
                 self, text=nav, fg_color="#406343", text_color="white",
                 hover_color="#2d4a30", command=lambda t=target: controller.show_frame(t),
-                corner_radius=8, height=35
+                height=35
             ).pack(side="left", padx=5)
 
+        # --- LOGOUT BUTTON ---
         ctk.CTkButton(self, text="LOGOUT", fg_color="#dc3545", text_color="white",
                       hover_color="#c82333", command=lambda: self.logout(controller),
                       corner_radius=8, height=35).pack(side="right", padx=20)
@@ -248,34 +273,80 @@ class Header(ctk.CTkFrame):
     def logout(self, controller):
         controller.current_user_name = None
         controller.show_frame(LoginFrame)
-
 # -------------------- LOGIN FRAME --------------------
 class LoginFrame(ctk.CTkFrame):
     def __init__(self, parent):
-        super().__init__(parent, fg_color="#f0f2f0")
+        super().__init__(parent, fg_color="white")
         self.parent = parent
         
-        self.login_box = ctk.CTkFrame(self, fg_color="white", width=350, height=450, corner_radius=15)
-        self.login_box.place(relx=0.5, rely=0.5, anchor="center")
-        self.login_box.pack_propagate(False)
+        # Configure Grid: 2 Columns (Left: Form, Right: Image)
+        self.grid_columnconfigure(0, weight=4) # Left side slightly wider
+        self.grid_columnconfigure(1, weight=5) # Right side
+        self.grid_rowconfigure(0, weight=1)
 
-        ctk.CTkLabel(self.login_box, text="🌿", font=("Arial", 40)).pack(pady=(40, 10))
-        ctk.CTkLabel(self.login_box, text="HerbalScan Login", font=("Arial", 22, "bold"), text_color="#295222").pack(pady=(0,20))
-
-        self.email_entry = ctk.CTkEntry(self.login_box, placeholder_text="Email Address", width=250, height=40)
-        self.email_entry.pack(pady=10)
+        # === LEFT SIDE: FORM ===
+        self.form_frame = ctk.CTkFrame(self, fg_color="white")
+        self.form_frame.grid(row=0, column=0, sticky="nsew", padx=40)
         
-        self.password_entry = ctk.CTkEntry(self.login_box, placeholder_text="Password", show="*", width=250, height=40)
-        self.password_entry.pack(pady=10)
+        # Center content vertically inside form_frame
+        self.form_inner = ctk.CTkFrame(self.form_frame, fg_color="white")
+        self.form_inner.pack(expand=True, fill="x")
 
-        login_btn = ctk.CTkButton(self.login_box, text="Login", width=250, height=40, fg_color="#295222", 
-                                  hover_color="#1f3d1a", font=("Arial", 14, "bold"),
+        # Heading
+        heading_label = ctk.CTkLabel(self.form_inner, text="HerbalScan Login", 
+                                     font=("Arial", 32, "bold"), text_color="#333")
+        heading_label.pack(anchor="n", pady=(0, 60))
+        ## Email
+        # CHANGED: Added width=300, Changed height to 40
+        self.email_entry = ctk.CTkEntry(self.form_inner, placeholder_text="email", 
+                                        height=40, width=300, 
+                                        font=("Arial", 14), border_color="#aaa", 
+                                        fg_color="white", text_color="black")
+        self.email_entry.pack(pady=(0, 20)) # Removed fill="x" so it respects the fixed width
+        
+        # Password
+        # CHANGED: Added width=300, Changed height to 40
+        self.password_entry = ctk.CTkEntry(self.form_inner, placeholder_text="password", 
+                                           show="*", height=40, width=300,
+                                           font=("Arial", 14), border_color="#aaa", 
+                                           fg_color="white", text_color="black")
+        self.password_entry.pack(pady=(0, 30)) # Removed fill="x"
+
+        # Login Button
+        # CHANGED: Added width=300, Changed height to 40
+        login_btn = ctk.CTkButton(self.form_inner, text="Login", 
+                                  height=40, width=300, 
+                                  fg_color="#295222", hover_color="#1f3d1a", 
+                                  font=("Arial", 16, "bold"), corner_radius=0, 
                                   command=self.perform_login)
-        login_btn.pack(pady=20)
+        login_btn.pack(pady=(0, 20)) # Removed fill="x"
+        # Register Link
+        ctk.CTkButton(self.form_inner, text="Create new account", fg_color="transparent", 
+                      text_color="gray", hover_color="#f0f0f0", font=("Arial", 12, "bold"),
+                      command=lambda: parent.show_frame(RegisterFrame)).pack()
 
-        ctk.CTkButton(self.login_box, text="Create new account", fg_color="transparent", 
-                      text_color="#295222", hover_color="#f0f0f0",
-                      command=lambda: parent.show_frame(RegisterFrame)).pack(pady=5)
+        # === RIGHT SIDE: IMAGE ===
+        self.image_frame = ctk.CTkFrame(self, fg_color="#295222", corner_radius=0)
+        self.image_frame.grid(row=0, column=1, sticky="nsew")
+        
+        # Try to load 'assets/login_bg.jpg'
+        try:
+            # Check if assets folder exists, if not create it (won't have image but prevents error)
+            if not os.path.exists('assets'): os.makedirs('assets')
+            
+            img_path = "assets/login_bg.jpg" # Make sure to put your image here!
+            if os.path.exists(img_path):
+                bg_img = Image.open(img_path)
+                # Resize to a large height to ensure coverage
+                bg_img = bg_img.resize((700, 800), Image.Resampling.LANCZOS)
+                self.bg_image_tk = ctk.CTkImage(light_image=bg_img, size=(600, 800))
+                
+                img_lbl = ctk.CTkLabel(self.image_frame, image=self.bg_image_tk, text="")
+                img_lbl.place(x=0, y=0, relwidth=1, relheight=1)
+            else:
+                ctk.CTkLabel(self.image_frame, text="Add 'login_bg.jpg'\nto assets folder", text_color="white").place(relx=0.5, rely=0.5, anchor="center")
+        except Exception as e:
+            print(f"BG Load Error: {e}")
     
     def perform_login(self):
         email = self.email_entry.get().strip()
@@ -895,10 +966,10 @@ class HistoryFrame(ctk.CTkFrame):
         
         header_frame = ctk.CTkFrame(self, fg_color="white")
         header_frame.pack(fill="x", padx=20, pady=10)
-        ctk.CTkLabel(header_frame, text="📚 Scan History", font=("Arial", 24, "bold"), text_color="#295222").pack(side="left")
+        ctk.CTkLabel(header_frame, text=" Scan History", font=("Arial", 24, "bold"), text_color="#295222").pack(side="left")
         
         # CHANGED: "Refresh" is now "Clear History"
-        ctk.CTkButton(header_frame, text="🗑️ Clear History", fg_color="#dc3545", hover_color="#c82333", 
+        ctk.CTkButton(header_frame, text=" Clear History", fg_color="#dc3545", hover_color="#c82333", 
                       command=self.clear_history).pack(side="right")
         
         self.history_list = ctk.CTkScrollableFrame(self, fg_color="#f8f9fa")
